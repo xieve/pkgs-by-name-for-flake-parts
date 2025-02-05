@@ -44,21 +44,25 @@ in
       { config, pkgs, ... }:
       let
         flattenPkgs =
-          path: value:
+          separator: path: value:
           if lib.isDerivation value then
             {
-              ${lib.concatStringsSep config.pkgsNameSeparator path} = value;
+              ${lib.concatStringsSep separator path} = value;
             }
           else
-            lib.concatMapAttrs (name: flattenPkgs (path ++ [ name ])) value;
+            lib.concatMapAttrs (name: flattenPkgs separator (path ++ [ name ])) value;
 
-        scope = lib.makeScope pkgs.newScope (
-          self:
-          lib.filesystem.packagesFromDirectoryRecursive {
-            callPackage = self.newScope { inherit inputs; };
-            directory = config.pkgsDirectory;
-          }
-        );
+        scopeFromDirectory =
+          directory:
+          lib.makeScope pkgs.newScope (
+            self:
+            lib.filesystem.packagesFromDirectoryRecursive {
+              inherit directory;
+              callPackage = self.newScope { inherit inputs; };
+            }
+          );
+
+        scope = scopeFromDirectory config.pkgsDirectory;
 
         # scope.packages is the second function we passed to makeScope. makeScope
         # calculates the fixpoint of the scope for us, ie. when we now call this
@@ -70,7 +74,7 @@ in
       in
       lib.mkIf (config.pkgsDirectory != null) {
         inherit legacyPackages;
-        packages = flattenPkgs [ ] legacyPackages;
+        packages = flattenPkgs config.pkgsNameSeparator [ ] legacyPackages;
       };
   };
 }
