@@ -43,27 +43,31 @@ in
     perSystem =
       { config, pkgs, ... }:
       let
-        scope = lib.makeScope pkgs.newScope (self: {
-          inherit inputs;
-        });
-
-        flattenAttrs =
+        flattenPkgs =
           path: value:
-          if builtins.isAttrs value then
-            lib.concatMapAttrs (name: flattenAttrs (path ++ [ name ])) value
-          else
+          if lib.isDerivation value then
             {
               "${lib.concatStringsSep config.pkgsNameSeparator path}" = value;
-            };
+            }
+          else
+            lib.concatMapAttrs (name: flattenPkgs (path ++ [ name ])) value;
 
-        legacyPackages = lib.filesystem.packagesFromDirectoryRecursive {
-          directory = config.pkgsDirectory;
-          inherit (scope) callPackage;
-        };
+        # makeScope returns some non-derivation values, which we have to filter
+        # out to conform to the flake spec. Assuming that `lib` is from `nixpkgs`,
+        # `callPackage` will only ever return derivations, so this should be fine.
+        legacyPackages = lib.filterAttrs (_: value: builtins.isAttrs value) (
+          lib.makeScope pkgs.newScope (
+            self:
+            lib.filesystem.packagesFromDirectoryRecursive {
+              callPackage = self.newScope { inherit inputs; };
+              directory = config.pkgsDirectory;
+            }
+          )
+        );
       in
       lib.mkIf (config.pkgsDirectory != null) {
         inherit legacyPackages;
-        packages = flattenAttrs [] legacyPackages;
+        packages = flattenPkgs [ ] legacyPackages;
       };
   };
 }
