@@ -48,45 +48,22 @@ in
         });
 
         flattenAttrs =
-          {
-            attrs ? { },
-            separator ? "/",
-            callback,
-          }:
-          let
-            flatten =
-              attrSet: prefixes:
-              builtins.foldl' (
-                acc: name:
-                let
-                  newValue = attrSet.${name};
-                  newKey = prefixes ++ [ name ];
-                in
-                if lib.isFunction newValue then
-                  acc // { ${lib.concatStringsSep separator newKey} = newValue callback; }
-                else
-                  acc // (flatten newValue newKey)
+          path: value:
+          if builtins.isAttrs value then
+            lib.concatMapAttrs (name: flattenAttrs (path ++ [ name ])) value
+          else
+            {
+              ${lib.concatStringsSep config.pkgsNameSeparator path} = value;
+            };
 
-              ) { } (builtins.attrNames attrSet);
-          in
-          flatten attrs [ ];
-      in
-      lib.mkIf (config.pkgsDirectory != null) {
         legacyPackages = lib.filesystem.packagesFromDirectoryRecursive {
           directory = config.pkgsDirectory;
           inherit (scope) callPackage;
         };
-
-        packages = flattenAttrs {
-          attrs = lib.filesystem.packagesFromDirectoryRecursive {
-            directory = config.pkgsDirectory;
-            callPackage =
-              file: args: callback:
-              callback file args;
-          };
-          separator = config.pkgsNameSeparator;
-          callback = scope.callPackage;
-        };
+      in
+      lib.mkIf (config.pkgsDirectory != null) {
+        inherit legacyPackages;
+        packages = flattenAttrs [] legacyPackages;
       };
   };
 }
