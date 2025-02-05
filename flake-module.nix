@@ -52,18 +52,21 @@ in
           else
             lib.concatMapAttrs (name: flattenPkgs (path ++ [ name ])) value;
 
-        # makeScope returns some non-derivation values, which we have to filter
-        # out to conform to the flake spec. Assuming that `lib` is from `nixpkgs`,
-        # `callPackage` will only ever return derivations, so this should be fine.
-        legacyPackages = lib.filterAttrs (_: value: builtins.isAttrs value) (
-          lib.makeScope pkgs.newScope (
-            self:
-            lib.filesystem.packagesFromDirectoryRecursive {
-              callPackage = self.newScope { inherit inputs; };
-              directory = config.pkgsDirectory;
-            }
-          )
+        scope = lib.makeScope pkgs.newScope (
+          self:
+          lib.filesystem.packagesFromDirectoryRecursive {
+            callPackage = self.newScope { inherit inputs; };
+            directory = config.pkgsDirectory;
+          }
         );
+
+        # scope.packages is the second function we passed to makeScope. makeScope
+        # calculates the fixpoint of the scope for us, ie. when we now call this
+        # function with scope, scope.callPackage will "know" all locally defined
+        # packages.
+        # We don't have to worry about the performance of this function call, since
+        # Nix is lazy and doesn't compute any equivalent expression more than once.
+        legacyPackages = scope.packages scope;
       in
       lib.mkIf (config.pkgsDirectory != null) {
         inherit legacyPackages;
